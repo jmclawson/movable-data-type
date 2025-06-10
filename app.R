@@ -7,7 +7,7 @@ library(duckdb)
 library(RMariaDB)
 library(arrow)
 
-readRenviron(".Renviron")
+# readRenviron(".Renviron")
 
 has_column <- possibly(\(...) ncol(select(...)) > 0, otherwise = FALSE)
 
