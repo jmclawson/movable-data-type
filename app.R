@@ -259,21 +259,18 @@ ui <- page_navbar(
           "Each query is run against a temporary copy of the SQLite data, isolated to this app instance. Experiment with SQL for all four tables without affecting the original database."
         ))
       ),
-      layout_columns(
-        col_widths = 12,
-        row_heights = c(2, 5),
-        card(
-          textAreaInput(
-            "sql_query",
-            "Compose a SQLite Query:",
-            value = "SELECT * FROM metadata LIMIT 10",
-            width = "100%",
-            rows = 4,
-          ),
-          actionButton("submit_button", label = "Submit", width = "100%")
+      card(
+        fill = FALSE,
+        card_body(textAreaInput(
+          "sql_query",
+          "Compose a SQLite Query:",
+          value = "SELECT * FROM metadata LIMIT 10",
+          width = "100%",
+          rows = 4,
         ),
-        card(tableOutput("sql_result"))
-      )
+        actionButton("submit_button", label = "Submit", width = "100%"))
+      ),
+      card(tableOutput("sql_result"))
     )
   ),
   nav_panel(
