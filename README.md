@@ -2,7 +2,9 @@
 
 _From movable type to **Movable Data Type**_
 
-Shiny app for exploring structure and movement across different backends, practicing SQL queries, and visualizing language distributions using [data from the Project Gutenberg corpus](https://github.com/rfordatascience/tidytuesday/tree/main/data/2025/2025-06-03).
+Shiny app for exploring structure and movement across different backends, practicing SQL queries, and visualizing language distributions using [data](https://github.com/rfordatascience/tidytuesday/tree/main/data/2025/2025-06-03)  from the Project Gutenberg corpus.
+
+Live app: [jmclawson.shinyapps.io/movable-datatype/](https://jmclawson.shinyapps.io/movable-datatype/)
 
 ## Structure
 
