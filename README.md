@@ -13,10 +13,16 @@ Compare backend structure and read performance across four sources:
 - Local **SQLite** database
 - Remote **MySQL** database
 
+<img width="1324" alt="Screenshot - Structure" src="https://github.com/user-attachments/assets/7bf76b1e-d8dd-4e4e-843d-36bbdf8049df"/>
+
 ## Query
 
 Compose SQL queries to extract information from a SQLite database.
 
+<img width="1322" alt="Screenshot - Query" src="https://github.com/user-attachments/assets/39fbe13e-b34e-4844-bfec-9c9bafd4ddb9"/>
+
 ## Languages
 
 Create bar charts, pie charts, and waffle charts to explore language distributions in the Project Gutenberg corpus.
+
+<img width="1320" alt="Screenshot - Languages" src="https://github.com/user-attachments/assets/03ed188e-a808-48ca-b604-21a20d050f4c"/>
