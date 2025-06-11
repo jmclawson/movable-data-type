@@ -7,7 +7,9 @@ library(duckdb)
 library(RMariaDB)
 library(arrow)
 
-# readRenviron(".Renviron")
+# readRenviron(".Renviron") # needed for shinyapps.io
+
+# setup -----------------------------------------------
 
 has_column <- possibly(\(...) ncol(select(...)) > 0, otherwise = FALSE)
 
@@ -83,6 +85,14 @@ get_data <- function(backend, .table = "metadata") {
   result
 }
 
+format_bytes <- function(x){
+  case_when(
+    x > 1000000 ~ round(x / 1000000, 2) |> paste("MB"),
+    x > 1000 ~ round(x / 1000, 2) |> paste("KB"),
+    .default = x |> paste("bytes")
+  )
+}
+
 files_parquet <- list.files("data", pattern = ".parquet", full.names = TRUE)
 file_parquet <- list.files(
   "data",
@@ -94,6 +104,21 @@ file_sqlite <- list.files("data", pattern = ".sqlite", full.names = TRUE)
 
 sqlite_temp <- tempfile(fileext = ".sqlite")
 file.copy(file_sqlite, sqlite_temp)
+
+block_query <- function(query, string){
+  need(
+    !str_detect(query, string),
+    paste(string, "statements aren't supported. (Please be kind to the server.)")
+  )
+}
+
+query_languages <- c(
+  "SELECT language, COUNT(*) AS n FROM metadata
+GROUP BY language
+ORDER BY n DESC",
+  "SELECT language, COUNT(*) FROM metadata
+GROUP BY language
+ORDER BY COUNT(*) DESC")
 
 query_author_date <- c(
   "SELECT author, birthdate AS born FROM authors 
@@ -131,6 +156,7 @@ LIMIT 20"
 query_random <- c(
   query_author_date,
   query_texts,
+  query_languages,
   "SELECT * FROM subjects LIMIT 15",
   "SELECT * FROM metadata
 WHERE language = 'fr' 
@@ -138,28 +164,36 @@ WHERE language = 'fr'
 LIMIT 10"
 )
 
+# UI --------------------------------------------------
+
 ui <- page_navbar(
   theme = bs_theme(version = 5, bootswatch = "journal"),
   id = "the_page",
   title = "Movable Data Type",
   nav_spacer(),
+
+  ## ui - Page1 -------------------------------------
+
   nav_panel(
     title = "Structure",
     layout_sidebar(
       sidebar = sidebar(
-        selectInput(
-          "db_backend",
-          "Backend:",
-          selected = sample(c("Parquet", "duckDB", "SQLite"), size = 1),
-          choices = c("Parquet", "duckDB", "SQLite", "mySQL")
-        ),
-        selectInput(
-          "db_table",
-          "Table:",
-          choices = c("metadata", "authors", "languages", "subjects")
+        p(tags$b("From movable type to", tags$i("movable data type.")), "Explore structure and movement across different backends using data from the Project Gutenberg corpus."),
+        wellPanel(
+          selectInput(
+            "db_backend",
+            "Backend:",
+            selected = sample(c("Parquet", "duckDB", "SQLite"), size = 1),
+            choices = c("Parquet", "duckDB", "SQLite", "mySQL")
+          ),
+          selectInput(
+            "db_table",
+            "Table:",
+            choices = c("metadata", "authors", "languages", "subjects")
+          )
         ),
         p(tags$i(
-          "Each change of backend or table also adds a row to a remote mySQL table, so UI updates will appear slower than the recorded read time."
+          "Each change of backend or table adds a row to a remote mySQL table, so UI updates may appear slower than the recorded read time."
         ))
       ),
       layout_columns(
@@ -197,19 +231,22 @@ ui <- page_navbar(
       )
     )
   ),
+
+  ## ui - Page2 -----------------------------------
+
   nav_panel(
     title = "Query",
     layout_sidebar(
       sidebar = sidebar(
+        p("Practice querying tables using Structured Query Language (SQL) syntax."),
         tags$h5("Sample queries"),
         wellPanel(
           tags$ul(
-            tags$li(actionLink("sql_list_tables", "List all tables")),
-            tags$li(actionLink("sql_text", "Find texts by metadata")),
-            tags$li(actionLink("sql_author_date", "Find authors by dates")),
-            tags$li(actionLink("sql_random_query", "Surprise me"))
-          )
-        ),
+            tags$li(actionLink("sql_list_tables", "All tables")),
+            tags$li(actionLink("sql_languages", "Common languages")),
+            tags$li(actionLink("sql_text", "Texts by metadata")),
+            tags$li(actionLink("sql_author_date", "Authors by dates")),
+            tags$li(actionLink("sql_random_query", "Surprise me")))),
         tags$h5("Tables and columns"),
         accordion(
           open = FALSE,
@@ -256,48 +293,62 @@ ui <- page_navbar(
           )
         ),
         p(tags$i(
-          "Each query is run against a temporary copy of the SQLite data, isolated to this app instance. Experiment with SQL for all four tables without affecting the original database."
+          "Each query runs against a temporary copy of the SQLite data, isolated to this app instance. Experiment with SQL for all four tables without affecting the original database. A few commands are blocked to maintain responsiveness."
         ))
       ),
       card(
         fill = FALSE,
+        card_header("SQLite Query"),
         card_body(textAreaInput(
           "sql_query",
-          "Compose a SQLite Query:",
+          NULL,
           value = "SELECT * FROM metadata LIMIT 10",
           width = "100%",
           rows = 4,
         ),
         actionButton("submit_button", label = "Submit", width = "100%"))
       ),
-      card(tableOutput("sql_result"))
+      card(
+        card_header("Result"),
+        tableOutput("sql_result"))
     )
   ),
+
+  ## ui - Page3 -----------------------------------
+
   nav_panel(
     title = "Languages",
     layout_sidebar(
       sidebar = sidebar(
-        numericInput("top_n", "Languages", value = 5, min = 1, max = 7),
-        selectInput(
-          "lang_filter",
-          "Exclude",
-          multiple = TRUE,
-          choices = c()
+        p("Visualize language distributions in the Project Gutenberg dataset."),
+        wellPanel(
+          numericInput(
+            "top_n", "Languages", 
+            value = 5, min = 1, max = 7),
+          selectInput(
+            "lang_filter",
+            "Exclude",
+            multiple = TRUE,
+            choices = c()),
+          radioButtons(
+            "chart_type",
+            "Chart type",
+            choices = c("Bar", "Pie", "Waffle"))
         ),
-        radioButtons(
-          "chart_type",
-          "Chart type",
-          choices = c("Bar", "Pie", "Waffle")
-        ),
-        tags$hr(),
-        p(tags$i(
-          "Charts are derived from the backend and table selections, which are set on the", shiny::actionLink("structure_link", "Structure page"), "."))
+        p(tags$i("Charts reflect the backend and table selections set on the", shiny::actionLink("structure_link", "Structure page"), "."))
       ),
       card(plotOutput("plot_languages"))
     )
   ),
-  nav_spacer()
+  nav_spacer(),
+  nav_item(
+    tags$a(
+      href="https://github.com/jmclawson/movable-data-type",
+      icon("github"))
+  )
 )
+
+# server ----------------------------------------------
 
 server <- function(input, output, session) {
   the_data <- reactive({
@@ -314,24 +365,6 @@ server <- function(input, output, session) {
     the_data() |>
       mutate(language = language |> str_replace_all(language_codes))
   })
-  
-  observe({
-    nav_select("the_page", selected = "Structure")
-  }) |> 
-    bindEvent(input$structure_link)
-
-  observe({
-    updateSelectInput(
-      session,
-      "lang_filter",
-      choices = the_languages() |>
-        pull(language) |>
-        fct_infreq() |>
-        sort() |>
-        unique()
-    )
-  }) |>
-    bindEvent(input$db_table == "metadata")
 
   db_performance <- reactive({
     mysql_conn <- dbConnect(
@@ -352,24 +385,287 @@ server <- function(input, output, session) {
     the_languages() |>
       filter(!language %in% input$lang_filter)
   })
+  
+  ## server - Page1 --------------------------------
+  
+  ### server - Page1 - value boxes -----------------
 
   output$n_rows <- renderText({
     the_data() |>
       nrow() |>
       scales::label_comma()()
   })
-
+  
   output$n_cols <- renderText({
     the_data() |>
       ncol()
   })
-
+  
   output$time_per_row <- renderText({
     result <- (as.numeric(attributes(the_data())$elapsed) / nrow(the_data()))
-
+    
     paste(round(result * 1000000, 4), "ms")
   })
+  
+  output$elapsed_time <- renderText({
+    attributes(the_data())$elapsed |>
+      round(4) |>
+      paste("sec")
+  })
+  
+  output$valuebox_speed <- renderUI({
+    value_box(
+      title = paste(input$db_backend, "read time"),
+      value = textOutput("elapsed_time"),
+      theme = case_when(
+        attributes(the_data())$elapsed < 0.1 ~ "bg-gradient-green-teal",
+        attributes(the_data())$elapsed < 1 ~ "bg-gradient-indigo-blue",
+        attributes(the_data())$elapsed < 2 ~ "warning",
+        TRUE ~ "danger"
+      ),
+      showcase = icon(
+        case_when(
+          attributes(the_data())$elapsed < 0.1 ~ "hourglass-start",
+          attributes(the_data())$elapsed < 1 ~ "hourglass-half",
+          TRUE ~ "hourglass-end"
+        )
+      )
+    )
+  })
+  
+  output$valuebox_speed_per_row <- renderUI({
+    value_box(
+      title = "Read time per row",
+      showcase = icon("stopwatch"),
+      value = textOutput("time_per_row"),
+    )
+  })
+  
+  output$valuebox_rows <- renderUI({
+    value_box(
+      title = "Rows",
+      theme = "info",
+      showcase = icon("diagram-next"),
+      value = textOutput("n_rows"),
+    )
+  })
+  
+  output$valuebox_columns <- renderUI({
+    value_box(
+      title = "Columns",
+      theme = "info",
+      showcase = icon("table-columns"),
+      value = textOutput("n_cols"),
+    )
+  })
+  
+  output$file_size <- renderText({
+    if (input$db_backend != "mySQL") {
+      the_file <- switch(
+        input$db_backend,
+        duckDB = file_duckdb,
+        Parquet = file_parquet,
+        SQLite = file_sqlite
+      )
+      
+      file.size(the_file) |>
+        format_bytes()
+    } else {
+      "31.1 MiB" # Mebibytes reported by server
+    }
+  })
+  
+  output$valuebox_size <- renderUI({
+    req(input$db_backend)
+    value_box(
+      title = paste0(
+        if_else(
+          input$db_backend != "mySQL",
+          "local ",
+          "remote "
+        ),
+        input$db_backend,
+        if_else(
+          input$db_backend != "mySQL",
+          " file",
+          ""
+        ),
+        " size"
+      ),
+      value = textOutput("file_size"),
+      showcase = icon("floppy-disk")
+    )
+  })
+  
+  ### server - Page1 - tables ----------------------
+  
+  output$tbl_schema <- renderTable({
+    if (input$db_backend != "Parquet") {
+      the_table <- input$db_table
+      the_conn <- switch(
+        input$db_backend,
+        SQLite = dbConnect(SQLite(), dbname = "data/gutenberg.sqlite"),
+        duckDB = dbConnect(duckdb(), dbdir = "data/gutenberg.duckdb"),
+        mySQL = dbConnect(
+          MariaDB(),
+          dbname = Sys.getenv("MYSQL_DBNAME"),
+          username = Sys.getenv("MYSQL_USER"),
+          password = Sys.getenv("MYSQL_PASSWORD"),
+          host = Sys.getenv("MYSQL_HOST"),
+          mysql = TRUE
+        )
+      )
+      if (input$db_backend %in% c("duckDB", "SQLite")) {
+        the_query <- glue::glue("PRAGMA table_info('{the_table}')")
+      } else if (input$db_backend == "mySQL") {
+        the_query <- glue::glue("SHOW COLUMNS FROM {the_table}")
+      }
+      on.exit(dbDisconnect(the_conn))
+      dbGetQuery(the_conn, the_query)
+    } else {
+      parquet_schema <- files_parquet |>
+        str_subset(input$db_table) |>
+        open_dataset() |>
+        schema()
+      
+      data.frame(
+        column = names(parquet_schema),
+        type = sapply(parquet_schema, \(x) x$type$ToString())
+      )
+    }
+  })
+  
+  output$tbl_performance <- renderTable({
+    db_performance() |>
+      filter(tbl_name == input$db_table) |>
+      arrange(desc(timestamp)) |>
+      mutate(
+        timestamp = timestamp |>
+          as.POSIXct() |>
+          as.character() 
+      )
+  })
+  
+  ### server - Page1 - plot ----------------------
+  
+  output$box_performance <- renderPlot({
+    db_performance() |>
+      filter(tbl_name == input$db_table) |>
+      mutate(
+        backend = backend |>
+          fct_reorder(read_time)
+      ) |>
+      ggplot(aes(x = backend, y = read_time, fill = backend)) +
+      geom_boxplot(show.legend = FALSE) +
+      theme_minimal() +
+      scale_y_log10() +
+      labs(
+        x = NULL,
+        y = "seconds"
+      ) +
+      theme(
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        text = element_text(size = 18)
+      ) +
+      scale_fill_brewer(palette = "Dark2")
+  })
+  
+  ## server - Page2 -----------------------------------
+  
+  ### server - Page2 - links --------------------------
+  
+  observe({
+    updateTextAreaInput(
+      session,
+      "sql_query",
+      value = 'SELECT name FROM sqlite_master WHERE type IS "table"'
+    )
+  }) |> 
+    bindEvent(input$sql_list_tables)
+  
+  observe({
+    the_query <- sample(query_languages, 1)
+    updateTextAreaInput(
+      session,
+      "sql_query",
+      value = the_query
+    )
+  }) |> 
+    bindEvent(input$sql_languages)
+  
+  observe({
+    the_query <- sample(query_author_date, 1)
+    updateTextAreaInput(
+      session,
+      "sql_query",
+      value = the_query
+    )
+  }) |> 
+    bindEvent(input$sql_author_date)
+  
+  observe({
+    the_query <- sample(query_texts, 1)
+    updateTextAreaInput(
+      session,
+      "sql_query",
+      value = the_query
+    )
+  }) |> 
+    bindEvent(input$sql_text)
+  
+  observe({
+    the_query <- sample(query_random, 1)
+    updateTextAreaInput(
+      session,
+      "sql_query",
+      value = the_query
+    )
+  }) |> 
+    bindEvent(input$sql_random_query)
+  
+  ### server - Page2 - table --------------------------
 
+  output$sql_result <- renderTable({
+    validate(
+      block_query(input$sql_query, "BEGIN"),
+      block_query(input$sql_query, "PRAGMA"),
+      block_query(input$sql_query, "VACUUM"),
+      block_query(input$sql_query, "ANALYZE"),
+      block_query(input$sql_query, "ATTACH"),
+      block_query(input$sql_query, "DETACH"),
+    )
+    
+    sqlite_db <- dbConnect(SQLite(), dbname = sqlite_temp)
+    on.exit(dbDisconnect(sqlite_db))
+    dbGetQuery(sqlite_db, input$sql_query)
+  }) |>
+    bindEvent(input$submit_button)
+  
+  ## server - Page3 -------------------------------
+  
+  ### server - Page3 - widgets --------------------
+  
+  observe({
+    updateSelectInput(
+      session,
+      "lang_filter",
+      choices = the_languages() |>
+        pull(language) |>
+        fct_infreq() |>
+        sort() |>
+        unique()
+    )
+  }) |>
+    bindEvent(input$db_table == "metadata")
+  
+  observe({
+    nav_select("the_page", selected = "Structure")
+  }) |> 
+    bindEvent(input$structure_link)
+  
+  ### server - Page3 - plot -----------------------
+  
   output$plot_languages <- renderPlot({
     lang_data <- filtered_data() |>
       mutate(
@@ -423,236 +719,31 @@ server <- function(input, output, session) {
         theme(legend.position = "top") +
         labs(fill = NULL)
     }
-
+    
     the_plot <- the_plot +
-      labs(
-        title = glue::glue(
-          "Top {input$top_n} Languages for Project Gutenberg Texts"
-        )
-      ) +
+      labs(title = "Language Distribution in Project Gutenberg Texts") +
       scale_fill_brewer(palette = "Dark2") +
       theme(text = element_text(size = 18))
-
-    if (length(input$lang_filter) > 0) {
+    
+    the_subtitle <- if_else(input$top_n > 1, glue::glue("Top {input$top_n} languages"), "")
+    the_subtitle <- if_else(
+      length(input$lang_filter) > 0, 
+      paste(the_subtitle, 
+            paste0(
+              "excluding ",
+              str_flatten_comma(input$lang_filter, last = ", and ")
+            )),
+      the_subtitle) |> 
+      str_squish() |> 
+      str_to_title() |> 
+      str_replace_all(" And ", " and ")
+    
+    if (the_subtitle != "") {
       the_plot <- the_plot +
-        labs(
-          subtitle = paste0(
-            "Excluding ",
-            str_flatten_comma(input$lang_filter, last = ", and ")
-          )
-        )
+        labs(subtitle = the_subtitle)
     }
+    
     the_plot
-  })
-
-  output$elapsed_time <- renderText({
-    attributes(the_data())$elapsed |>
-      round(4) |>
-      paste("sec")
-  })
-
-  output$valuebox_speed <- renderUI({
-    value_box(
-      title = paste(input$db_backend, "read time"),
-      value = textOutput("elapsed_time"),
-      theme = case_when(
-        attributes(the_data())$elapsed < 0.1 ~ "bg-gradient-green-teal",
-        attributes(the_data())$elapsed < 1 ~ "bg-gradient-indigo-blue",
-        attributes(the_data())$elapsed < 2 ~ "warning",
-        TRUE ~ "danger"
-      ),
-      showcase = icon(
-        case_when(
-          attributes(the_data())$elapsed < 0.1 ~ "hourglass-start",
-          attributes(the_data())$elapsed < 1 ~ "hourglass-half",
-          TRUE ~ "hourglass-end"
-        )
-      )
-    )
-  })
-
-  output$valuebox_speed_per_row <- renderUI({
-    value_box(
-      title = "Read time per row",
-      showcase = icon("stopwatch"),
-      value = textOutput("time_per_row"),
-    )
-  })
-
-  output$valuebox_rows <- renderUI({
-    value_box(
-      title = "Rows",
-      theme = "info",
-      showcase = icon("diagram-next"),
-      value = textOutput("n_rows"),
-    )
-  })
-
-  output$valuebox_columns <- renderUI({
-    value_box(
-      title = "Columns",
-      theme = "info",
-      showcase = icon("table-columns"),
-      value = textOutput("n_cols"),
-    )
-  })
-
-  output$file_size <- renderText({
-    if (input$db_backend != "mySQL") {
-      the_file <- switch(
-        input$db_backend,
-        duckDB = file_duckdb,
-        Parquet = file_parquet,
-        SQLite = file_sqlite
-      )
-
-      file.size(the_file) |>
-        {
-          \(x) {
-            case_when(
-              x > 1000000 ~ round(x / 1000000, 2) |> paste("MB"),
-              x > 1000 ~ round(x / 1000, 2) |> paste("KB"),
-              .default = x |> paste("bytes")
-            )
-          }
-        }()
-    } else {
-      "31.1 MiB" # Mebibytes reported by server
-    }
-  })
-
-  output$valuebox_size <- renderUI({
-    req(input$db_backend)
-    value_box(
-      title = paste0(
-        if_else(
-          input$db_backend != "mySQL",
-          "local ",
-          "remote "
-        ),
-        input$db_backend,
-        if_else(
-          input$db_backend != "mySQL",
-          " file",
-          ""
-        ),
-        " size"
-      ),
-      value = textOutput("file_size"),
-      showcase = icon("floppy-disk")
-    )
-  })
-
-  output$tbl_schema <- renderTable({
-    if (input$db_backend != "Parquet") {
-      the_table <- input$db_table
-      the_conn <- switch(
-        input$db_backend,
-        SQLite = dbConnect(SQLite(), dbname = "data/gutenberg.sqlite"),
-        duckDB = dbConnect(duckdb(), dbdir = "data/gutenberg.duckdb"),
-        mySQL = dbConnect(
-          MariaDB(),
-          dbname = Sys.getenv("MYSQL_DBNAME"),
-          username = Sys.getenv("MYSQL_USER"),
-          password = Sys.getenv("MYSQL_PASSWORD"),
-          host = Sys.getenv("MYSQL_HOST"),
-          mysql = TRUE
-        )
-      )
-      if (input$db_backend %in% c("duckDB", "SQLite")) {
-        the_query <- glue::glue("PRAGMA table_info('{the_table}');")
-      } else if (input$db_backend == "mySQL") {
-        the_query <- glue::glue("SHOW COLUMNS FROM {the_table};")
-      }
-      on.exit(dbDisconnect(the_conn))
-      dbGetQuery(the_conn, the_query)
-    } else {
-      parquet_schema <- files_parquet |>
-        str_subset(input$db_table) |>
-        open_dataset() |>
-        schema()
-
-      data.frame(
-        column = names(parquet_schema),
-        type = sapply(parquet_schema, \(x) x$type$ToString())
-      )
-    }
-  })
-
-  output$tbl_performance <- renderTable({
-    db_performance() |>
-      filter(tbl_name == input$db_table) |>
-      arrange(desc(timestamp)) |>
-      mutate(
-        timestamp = timestamp |>
-          as.POSIXct() |>
-          as.character() 
-      )
-  })
-
-  output$box_performance <- renderPlot({
-    db_performance() |>
-      filter(tbl_name == input$db_table) |>
-      mutate(
-        backend = backend |>
-          fct_reorder(read_time)
-      ) |>
-      ggplot(aes(x = backend, y = read_time, fill = backend)) +
-      geom_boxplot(show.legend = FALSE) +
-      theme_minimal() +
-      scale_y_log10() +
-      labs(
-        x = NULL,
-        y = "seconds"
-      ) +
-      theme(
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor.y = element_blank(),
-        text = element_text(size = 18)
-      ) +
-      scale_fill_brewer(palette = "Dark2")
-  })
-
-  output$sql_result <- renderTable({
-    sqlite_db <- dbConnect(SQLite(), dbname = "data/gutenberg.sqlite")
-    on.exit(dbDisconnect(sqlite_db))
-    dbGetQuery(sqlite_db, input$sql_query)
-  }) |>
-    bindEvent(input$submit_button)
-
-  observeEvent(input$sql_list_tables, {
-    updateTextAreaInput(
-      session,
-      "sql_query",
-      value = 'SELECT name FROM sqlite_master WHERE type IS "table"'
-    )
-  })
-
-  observeEvent(input$sql_author_date, {
-    the_query <- sample(query_author_date, 1)
-    updateTextAreaInput(
-      session,
-      "sql_query",
-      value = the_query
-    )
-  })
-
-  observeEvent(input$sql_text, {
-    the_query <- sample(query_texts, 1)
-    updateTextAreaInput(
-      session,
-      "sql_query",
-      value = the_query
-    )
-  })
-
-  observeEvent(input$sql_random_query, {
-    the_query <- sample(query_random, 1)
-    updateTextAreaInput(
-      session,
-      "sql_query",
-      value = the_query
-    )
   })
 }
 
