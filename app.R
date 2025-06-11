@@ -172,13 +172,14 @@ ui <- page_navbar(
   title = "Movable Data Type",
   nav_spacer(),
 
-  ## ui - Page1 -------------------------------------
+  ## ui - Structure -------------------------------------
 
   nav_panel(
     title = "Structure",
     layout_sidebar(
       sidebar = sidebar(
-        p(tags$b("From movable type to", tags$i("movable data type.")), "Explore structure and movement across different backends using data from the Project Gutenberg corpus."),
+        p(tags$i("From movable type to", tags$b("Movable Data Type"))), 
+        p("Explore structure and movement across different backends using data from the Project Gutenberg corpus."),
         wellPanel(
           selectInput(
             "db_backend",
@@ -232,7 +233,7 @@ ui <- page_navbar(
     )
   ),
 
-  ## ui - Page2 -----------------------------------
+  ## ui - Query -----------------------------------
 
   nav_panel(
     title = "Query",
@@ -314,7 +315,7 @@ ui <- page_navbar(
     )
   ),
 
-  ## ui - Page3 -----------------------------------
+  ## ui - Languages -----------------------------------
 
   nav_panel(
     title = "Languages",
@@ -386,9 +387,9 @@ server <- function(input, output, session) {
       filter(!language %in% input$lang_filter)
   })
   
-  ## server - Page1 --------------------------------
+  ## server - Structure --------------------------------
   
-  ### server - Page1 - value boxes -----------------
+  ### server - Structure - value boxes -----------------
 
   output$n_rows <- renderText({
     the_data() |>
@@ -497,7 +498,7 @@ server <- function(input, output, session) {
     )
   })
   
-  ### server - Page1 - tables ----------------------
+  ### server - Structure - tables ----------------------
   
   output$tbl_schema <- renderTable({
     if (input$db_backend != "Parquet") {
@@ -546,7 +547,7 @@ server <- function(input, output, session) {
       )
   })
   
-  ### server - Page1 - plot ----------------------
+  ### server - Structure - plot ----------------------
   
   output$box_performance <- renderPlot({
     db_performance() |>
@@ -571,9 +572,9 @@ server <- function(input, output, session) {
       scale_fill_brewer(palette = "Dark2")
   })
   
-  ## server - Page2 -----------------------------------
+  ## server - Query -----------------------------------
   
-  ### server - Page2 - links --------------------------
+  ### server - Query - links --------------------------
   
   observe({
     updateTextAreaInput(
@@ -624,7 +625,7 @@ server <- function(input, output, session) {
   }) |> 
     bindEvent(input$sql_random_query)
   
-  ### server - Page2 - table --------------------------
+  ### server - Query - table --------------------------
 
   output$sql_result <- renderTable({
     validate(
@@ -642,9 +643,9 @@ server <- function(input, output, session) {
   }) |>
     bindEvent(input$submit_button)
   
-  ## server - Page3 -------------------------------
+  ## server - Languages -------------------------------
   
-  ### server - Page3 - widgets --------------------
+  ### server - Languages - widgets --------------------
   
   observe({
     updateSelectInput(
@@ -664,7 +665,7 @@ server <- function(input, output, session) {
   }) |> 
     bindEvent(input$structure_link)
   
-  ### server - Page3 - plot -----------------------
+  ### server - Languages - plot -----------------------
   
   output$plot_languages <- renderPlot({
     lang_data <- filtered_data() |>
