@@ -232,9 +232,9 @@ ui <- page_navbar(
       )
     )
   ),
-  
+
   ## ui - Query -----------------------------------
-  
+
   nav_panel(
     title = "Query",
     layout_sidebar(
@@ -314,9 +314,9 @@ ui <- page_navbar(
         tableOutput("sql_result"))
     )
   ),
-  
+
   ## ui - Languages -----------------------------------
-  
+
   nav_panel(
     title = "Languages",
     layout_sidebar(
@@ -390,7 +390,7 @@ server <- function(input, output, session) {
   ## server - Structure --------------------------------
   
   ### server - Structure - value boxes -----------------
-  
+
   output$n_rows <- renderText({
     the_data() |>
       nrow() |>
@@ -626,7 +626,7 @@ server <- function(input, output, session) {
     bindEvent(input$sql_random_query)
   
   ### server - Query - table --------------------------
-  
+
   output$sql_result <- renderTable({
     validate(
       block_query(input$sql_query, "BEGIN"),
