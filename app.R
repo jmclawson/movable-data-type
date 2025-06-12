@@ -28,7 +28,7 @@ get_data <- function(backend, .table = "metadata") {
     host = Sys.getenv("MYSQL_HOST"),
     mysql = TRUE
   )
-
+  
   if (!backend %in% c("...", "Parquet")) {
     the_conn <- switch(
       backend,
@@ -36,11 +36,11 @@ get_data <- function(backend, .table = "metadata") {
       duckDB = dbConnect(duckdb(), dbdir = "data/gutenberg.duckdb"),
       mySQL = mysql_conn
     )
-
+    
     time_start <- Sys.time()
     result <- dbReadTable(the_conn, .table)
     time_end <- Sys.time()
-
+    
     data.frame(
       timestamp = Sys.time(),
       backend = backend,
@@ -53,18 +53,18 @@ get_data <- function(backend, .table = "metadata") {
         value = _,
         append = TRUE
       )
-
+    
     dbDisconnect(mysql_conn)
     if (backend != "mySQL") {
       dbDisconnect(the_conn)
     }
-
+    
     attributes(result)$elapsed <- time_end - time_start
   } else if (backend == "Parquet") {
     time_start <- Sys.time()
     result <- read_parquet(glue::glue("data/gutenberg_{.table}.parquet"))
     time_end <- Sys.time()
-
+    
     data.frame(
       timestamp = Sys.time(),
       backend = backend,
@@ -77,9 +77,9 @@ get_data <- function(backend, .table = "metadata") {
         value = _,
         append = TRUE
       )
-
+    
     dbDisconnect(mysql_conn)
-
+    
     attributes(result)$elapsed <- time_end - time_start
   }
   result
@@ -171,9 +171,9 @@ ui <- page_navbar(
   id = "the_page",
   title = "Movable Data Type",
   nav_spacer(),
-
+  
   ## ui - Structure -------------------------------------
-
+  
   nav_panel(
     title = "Structure",
     layout_sidebar(
@@ -232,9 +232,9 @@ ui <- page_navbar(
       )
     )
   ),
-
+  
   ## ui - Query -----------------------------------
-
+  
   nav_panel(
     title = "Query",
     layout_sidebar(
@@ -314,9 +314,9 @@ ui <- page_navbar(
         tableOutput("sql_result"))
     )
   ),
-
+  
   ## ui - Languages -----------------------------------
-
+  
   nav_panel(
     title = "Languages",
     layout_sidebar(
@@ -355,7 +355,7 @@ server <- function(input, output, session) {
   the_data <- reactive({
     get_data(input$db_backend, input$db_table)
   })
-
+  
   the_languages <- reactive({
     validate(
       need(
@@ -366,7 +366,7 @@ server <- function(input, output, session) {
     the_data() |>
       mutate(language = language |> str_replace_all(language_codes))
   })
-
+  
   db_performance <- reactive({
     mysql_conn <- dbConnect(
       MariaDB(),
@@ -381,7 +381,7 @@ server <- function(input, output, session) {
     dbReadTable(mysql_conn, "performance")
   }) |>
     bindEvent(input$db_backend, input$db_table)
-
+  
   filtered_data <- reactive({
     the_languages() |>
       filter(!language %in% input$lang_filter)
@@ -390,7 +390,7 @@ server <- function(input, output, session) {
   ## server - Structure --------------------------------
   
   ### server - Structure - value boxes -----------------
-
+  
   output$n_rows <- renderText({
     the_data() |>
       nrow() |>
@@ -626,7 +626,7 @@ server <- function(input, output, session) {
     bindEvent(input$sql_random_query)
   
   ### server - Query - table --------------------------
-
+  
   output$sql_result <- renderTable({
     validate(
       block_query(input$sql_query, "BEGIN"),
